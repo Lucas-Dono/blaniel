@@ -1,0 +1,296 @@
+/**
+ * VOICE CHAT API ENDPOINT
+ *
+ * POST /api/chat/voice - Enviar mensaje de voz y recibir respuesta con voz
+ * GET /api/chat/voice/[id] - Obtener audio de una respuesta específica
+ */
+
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
+import { prisma } from "@/lib/prisma";
+import { getWhisperClient } from "@/lib/voice-system/whisper-client";
+import { getElevenLabsClient } from "@/lib/voice-system/elevenlabs-client";
+import { getEmotionalSystemOrchestrator } from "@/lib/emotional-system/orchestrator";
+import {
+  getVoiceConfig,
+  incrementTranscriptions,
+  incrementVoiceGenerations,
+} from "@/lib/voice-system/voice-initialization";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
+
+/**
+ * POST /api/chat/voice
+ *
+ * Procesa un mensaje de voz del usuario y devuelve respuesta con audio
+ */
+export async function POST(req: NextRequest) {
+  try {
+    // 1. Autenticación
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parsear FormData (audio file + metadata)
+    const formData = await req.formData();
+
+    const audioFile = formData.get("audio") as File | null;
+    const agentId = formData.get("agentId") as string;
+    const language = formData.get("language") as string | null;
+
+    if (!audioFile || !agentId) {
+      return NextResponse.json(
+        { error: "audio y agentId son requeridos" },
+        { status: 400 }
+      );
+    }
+
+    // 3. Verificar que el agente pertenece al usuario
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      include: {
+        personalityCore: true,
+        internalState: true,
+        voiceConfig: true,
+      },
+    });
+
+    if (!agent || agent.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: "Agente no encontrado o acceso denegado" },
+        { status: 403 }
+      );
+    }
+
+    // 4. Verificar que el agente tiene voz habilitada
+    if (!agent.voiceConfig) {
+      return NextResponse.json(
+        { error: "Este agente no tiene voz configurada" },
+        { status: 400 }
+      );
+    }
+
+    if (!agent.voiceConfig.enableVoiceInput) {
+      return NextResponse.json(
+        { error: "Entrada de voz deshabilitada para este agente" },
+        { status: 400 }
+      );
+    }
+
+    // 5. Guardar audio temporalmente
+    const tempDir = os.tmpdir();
+    const tempFilePath = path.join(
+      tempDir,
+      `voice-${Date.now()}-${agentId}.webm`
+    );
+
+    const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
+    await fs.writeFile(tempFilePath, audioBuffer);
+
+    console.log(`[VoiceChat] Audio saved temporarily: ${tempFilePath}`);
+
+    // 6. Transcribir con Whisper
+    const whisperModel = agent.voiceConfig.whisperModel === "mini" ? "mini" : "standard";
+    const whisperClient = getWhisperClient(whisperModel);
+
+    const transcription = await whisperClient.transcribe(tempFilePath, {
+      language: language || undefined,
+      temperature: 0.2,
+    });
+
+    console.log(`[VoiceChat] Transcription: "${transcription.text}"`);
+
+    // 7. Analizar tono emocional (si está habilitado)
+    let emotionalTone = null;
+    if (agent.voiceConfig.detectEmotionalTone) {
+      emotionalTone = await whisperClient.analyzeEmotionalTone(transcription);
+      console.log(`[VoiceChat] Emotional tone detected:`, emotionalTone);
+    }
+
+    // 8. Incrementar contador de transcripciones
+    await incrementTranscriptions(agentId);
+
+    // 9. Procesar mensaje con el sistema emocional
+    const orchestrator = getEmotionalSystemOrchestrator();
+
+    // Preparar contexto adicional con tono emocional detectado
+    const messageContext = emotionalTone
+      ? {
+          userEmotionalTone: emotionalTone,
+          isVoiceInput: true,
+        }
+      : undefined;
+
+    const response = await orchestrator.processMessage({
+      agentId,
+      userMessage: transcription.text,
+      userId: session.user.id,
+      context: messageContext,
+    });
+
+    // 10. Generar voz de la respuesta (si está habilitado)
+    let audioUrl: string | null = null;
+    let audioBase64: string | null = null;
+
+    if (agent.voiceConfig.enableVoiceOutput) {
+      const elevenlabs = getElevenLabsClient();
+
+      // Calcular intensidad emocional desde las emociones triggeradas
+      const emotionCount = response.metadata.emotionsTriggered?.length || 0;
+      let intensity = 0.5; // default medium
+      if (emotionCount === 0) {
+        intensity = 0.3; // low
+      } else if (emotionCount >= 3) {
+        intensity = 0.8; // high
+      }
+
+      // Calcular modulación emocional desde el estado del personaje
+      const modulation = {
+        currentEmotion: response.metadata.emotionsTriggered[0] || "neutral",
+        intensity,
+        mood: {
+          valence: agent.internalState?.moodValence || 0,
+          arousal: agent.internalState?.moodArousal || 0.5,
+          dominance: agent.internalState?.moodDominance || 0.5,
+        },
+      };
+
+      const voiceResult = await elevenlabs.generateSpeech(
+        response.responseText,
+        agent.voiceConfig.voiceId,
+        modulation
+      );
+
+      // Convertir audio a base64 para enviarlo en la respuesta
+      audioBase64 = voiceResult.audioBuffer.toString("base64");
+
+      console.log(`[VoiceChat] Voice generated: ${voiceResult.audioBuffer.length} bytes`);
+
+      // Incrementar contador de generaciones
+      await incrementVoiceGenerations(agentId);
+    }
+
+    // 11. Limpiar archivo temporal
+    try {
+      await fs.unlink(tempFilePath);
+    } catch (error) {
+      console.warn(`[VoiceChat] Failed to delete temp file:`, error);
+    }
+
+    // 12. Retornar respuesta
+    return NextResponse.json({
+      success: true,
+      transcription: transcription.text,
+      emotionalTone,
+      response: {
+        text: response.responseText,
+        audioBase64,
+        emotions: response.metadata.emotionsTriggered,
+        reasoning: response.metadata.internalReasoning
+          ? {
+              situation: response.metadata.internalReasoning.situation,
+              primaryEmotion: response.metadata.internalReasoning.primaryEmotion,
+            }
+          : null,
+      },
+      voiceConfig: {
+        voiceName: agent.voiceConfig.voiceName,
+        autoPlay: agent.voiceConfig.autoPlayVoice,
+      },
+    });
+  } catch (error: any) {
+    console.error("[VoiceChat] Error:", error);
+
+    return NextResponse.json(
+      {
+        error: "Error procesando mensaje de voz",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/chat/voice/config?agentId=xxx
+ *
+ * Obtiene la configuración de voz de un agente
+ */
+export async function GET(req: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+
+    const { searchParams } = new URL(req.url);
+    const agentId = searchParams.get("agentId");
+
+    if (!agentId) {
+      return NextResponse.json(
+        { error: "agentId es requerido" },
+        { status: 400 }
+      );
+    }
+
+    // Verificar acceso
+    const agent = await prisma.agent.findUnique({
+      where: { id: agentId },
+      select: { userId: true },
+    });
+
+    if (!agent || agent.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: "Agente no encontrado o acceso denegado" },
+        { status: 403 }
+      );
+    }
+
+    // Obtener configuración de voz
+    const voiceConfig = await getVoiceConfig(agentId);
+
+    if (!voiceConfig) {
+      return NextResponse.json(
+        { error: "Este agente no tiene voz configurada" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      voiceConfig: {
+        voiceId: voiceConfig.voiceId,
+        voiceName: voiceConfig.voiceName,
+        gender: voiceConfig.gender,
+        age: voiceConfig.age,
+        accent: voiceConfig.accent,
+        enableVoiceInput: voiceConfig.enableVoiceInput,
+        enableVoiceOutput: voiceConfig.enableVoiceOutput,
+        autoPlayVoice: voiceConfig.autoPlayVoice,
+        whisperModel: voiceConfig.whisperModel,
+        detectEmotionalTone: voiceConfig.detectEmotionalTone,
+        totalVoiceGenerations: voiceConfig.totalVoiceGenerations,
+        totalTranscriptions: voiceConfig.totalTranscriptions,
+      },
+    });
+  } catch (error: any) {
+    console.error("[VoiceChat] Error getting config:", error);
+
+    return NextResponse.json(
+      {
+        error: "Error obteniendo configuración de voz",
+        details: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}

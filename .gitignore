@@ -1,0 +1,75 @@
+# Dependencies
+node_modules/
+/.pnp
+
+# Testing
+/coverage
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+/dist
+
+# Environment variables
+.env
+.env*.local
+
+# Debug
+npm-debug.log*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# TypeScript
+*.tsbuildinfo
+
+# Database
+*.db
+*.sqlite
+
+# Redis
+dump.rdb
+
+# Logs
+logs/
+*.log
+
+# Vector store
+.vector-store/
+/model/
+
+# Temp
+.cache/
+*.tmp
+
+# Prisma
+prisma/migrations/*_temp/
+
+# OS
+Thumbs.db
+
+# Sentry
+.sentryclirc
+
+# Vercel
+.vercel
+
+# Python
+__pycache__/
+*.py[cod]
+
+# AI/ML
+*.pt
+*.onnx
+
+# Mobile
+mobile/
+
+# Debug files
+.playwright-mcp/
