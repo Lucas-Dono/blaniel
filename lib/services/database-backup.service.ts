@@ -107,7 +107,7 @@ export class DatabaseBackupService {
         ContentType: 'application/gzip',
         Metadata: {
           'backup-timestamp': timestamp,
-          'database-name': 'creador-inteligencias',
+          'database-name': 'blaniel',
           'backup-type': 'full',
         },
       }));
@@ -305,7 +305,7 @@ export class DatabaseBackupService {
         const resend = new Resend(process.env.RESEND_API_KEY);
 
         await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'backups@creador-inteligencias.com',
+          from: process.env.RESEND_FROM_EMAIL || 'backups@blaniel.com',
           to: process.env.ADMIN_EMAIL,
           subject: result.success ? '✅ Database Backup Success' : '❌ Database Backup Failed',
           text: message,

@@ -12,7 +12,7 @@ function isOriginAllowed(origin: string | null, isDevelopment: boolean = false):
   const ALLOWED_ORIGINS = [
     'http://localhost:3000',
     'http://localhost:3001',
-    'https://creador-inteligencias.vercel.app',
+    'https://example.com',
   ];
 
   // SECURITY: Validación exacta de orígenes
@@ -63,7 +63,7 @@ describe('CORS Validation Security', () => {
 
   describe('Production Mode', () => {
     it('should allow only exact whitelisted origins', () => {
-      expect(isOriginAllowed('https://creador-inteligencias.vercel.app', false)).toBe(true);
+      expect(isOriginAllowed('https://example.com', false)).toBe(true);
     });
 
     it('should allow whitelisted localhost origins (for server-side requests)', () => {
@@ -79,19 +79,19 @@ describe('CORS Validation Security', () => {
     });
 
     it('should BLOCK subdomains even if base domain is whitelisted', () => {
-      expect(isOriginAllowed('https://evil.creador-inteligencias.vercel.app', false)).toBe(false);
-      expect(isOriginAllowed('https://subdomain.creador-inteligencias.vercel.app', false)).toBe(false);
+      expect(isOriginAllowed('https://evil.example.com', false)).toBe(false);
+      expect(isOriginAllowed('https://subdomain.example.com', false)).toBe(false);
     });
 
     it('should BLOCK similar domains', () => {
-      expect(isOriginAllowed('https://creador-inteligencias.vercel.app.evil.com', false)).toBe(false);
-      expect(isOriginAllowed('https://fake-creador-inteligencias.vercel.app', false)).toBe(false);
+      expect(isOriginAllowed('https://example.com.evil.com', false)).toBe(false);
+      expect(isOriginAllowed('https://fake-example.com', false)).toBe(false);
     });
 
     it('should be case-sensitive (block case variations)', () => {
       // CORS debe ser case-sensitive en el dominio (según RFC)
-      expect(isOriginAllowed('https://CREADOR-INTELIGENCIAS.VERCEL.APP', false)).toBe(false);
-      expect(isOriginAllowed('https://Creador-Inteligencias.Vercel.App', false)).toBe(false);
+      expect(isOriginAllowed('https://EXAMPLE.COM', false)).toBe(false);
+      expect(isOriginAllowed('https://Example.Com', false)).toBe(false);
     });
 
     it('should BLOCK external domains', () => {
@@ -115,7 +115,7 @@ describe('CORS Validation Security', () => {
     it('should block origins with path', () => {
       // El origin no debe incluir path
       expect(isOriginAllowed('http://localhost:3000/evil-path', true)).toBe(false);
-      expect(isOriginAllowed('https://creador-inteligencias.vercel.app/admin', false)).toBe(false);
+      expect(isOriginAllowed('https://example.com/admin', false)).toBe(false);
     });
 
     it('should block origins with query string', () => {
@@ -134,8 +134,8 @@ describe('CORS Validation Security', () => {
       expect(isOriginAllowed('https://localhost:3000', true)).toBe(true);
 
       // In production, it must be exact
-      expect(isOriginAllowed('http://creador-inteligencias.vercel.app', false)).toBe(false);
-      expect(isOriginAllowed('https://creador-inteligencias.vercel.app', false)).toBe(true);
+      expect(isOriginAllowed('http://example.com', false)).toBe(false);
+      expect(isOriginAllowed('https://example.com', false)).toBe(true);
     });
 
     it('should block other protocols', () => {

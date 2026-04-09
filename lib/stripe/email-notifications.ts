@@ -69,7 +69,7 @@ export async function sendEmail(emailData: EmailData): Promise<void> {
     // In production, email sending code would go here:
     // await sendgrid.send({
     //   to: emailData.to,
-    //   from: 'noreply@creador-inteligencias.com',
+    //   from: 'noreply@blaniel.com',
     //   subject: emailContent.subject,
     //   text: emailContent.text,
     //   html: emailContent.html,
