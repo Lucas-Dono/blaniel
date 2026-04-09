@@ -109,7 +109,7 @@ Every phase is based on published psychological research, not vibes.
 | Cache | Redis | Caching, rate limiting, queues |
 | LLM - Orchestrator | Google Gemini 2.5 Flash/Lite | Cognitive appraisal, emotion, behavior |
 | LLM - Writer | Venice AI | Character-faithful response generation |
-| LLM - Local | Ollama / LM Studio / LocalAI | 100% free, offline, private |
+| LLM - Local | Ollama / llama.cpp / LM Studio | 100% free, offline, private |
 | Embeddings | OpenAI `text-embedding-3-small` | Vector memory |
 | Vector Search | HNSWLib (`hnswlib-node`) | Semantic similarity |
 | Real-time | Socket.IO | Chat streaming, presence |
@@ -175,6 +175,8 @@ You'll get 3 demo agents (Luna, Atlas, Echo) to start experimenting immediately.
 
 Run everything on your own hardware — no API keys, no costs, complete privacy.
 
+#### Option 1: Ollama (Recommended)
+
 ```bash
 # Install Ollama: https://ollama.com
 ollama pull llama3.1
@@ -185,6 +187,32 @@ Add to `.env`:
 LOCAL_LLM_TYPE=ollama
 LOCAL_LLM_URL=http://localhost:11434
 LOCAL_LLM_MODEL=llama3.1
+```
+
+#### Option 2: llama.cpp (Advanced)
+
+For maximum control and performance:
+
+```bash
+# Clone and build llama.cpp
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build && cmake --build build --config Release --target llama-server
+
+# Download a GGUF model (example: Qwen 2.5 3B)
+mkdir -p models
+curl -L "https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF/resolve/main/qwen2.5-3b-instruct-q4_k_m.gguf" \
+  -o models/qwen2.5-3b-instruct-q4_k_m.gguf
+
+# Start server
+./build/bin/llama-server -m models/qwen2.5-3b-instruct-q4_k_m.gguf --port 8081 --host 127.0.0.1
+```
+
+Add to `.env`:
+```
+LOCAL_LLM_TYPE=localai
+LOCAL_LLM_URL=http://127.0.0.1:8081
+LOCAL_LLM_MODEL=qwen2.5-3b-instruct-q4_k_m.gguf
 ```
 
 Also works with [LM Studio](https://lmstudio.ai), [LocalAI](https://localai.io), and [text-generation-webui](https://github.com/oobabooga/text-generation-webui).
