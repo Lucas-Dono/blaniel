@@ -206,6 +206,7 @@ Community PRs for built-in provider support are welcome.
 
 | Issue | Fix |
 |-------|-----|
+| Error loading instrumentation hook | Delete build cache: `rm -rf .next && npm run dev` |
 | `DATABASE_URL` not found | Copy `.env.example` to `.env` and verify the variable |
 | `P1001: Can't reach database` | Check if PostgreSQL is running: `docker ps \| grep postgres` |
 | LLM API errors | Verify keys are valid and have credits |
